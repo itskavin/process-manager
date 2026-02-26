@@ -1,4 +1,4 @@
-# Process Manager - Tauri + Rust + Vue 3
+# Process Manager
 
 A lightweight, high-performance Windows desktop application for managing long-running processes with real-time log monitoring, resource usage tracking, and system tray integration.
 
