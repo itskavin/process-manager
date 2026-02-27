@@ -1,5 +1,7 @@
 # ⚡ Process Manager
 
+![Home](images/home.png)
+
 Manage, monitor, and control long-running commands (dev servers, tunnels, background jobs) from a single interface. Define processes once, start/stop them with a click, view live logs with ANSI colors, track resource usage, and use the built-in PowerShell terminal to run ad-hoc commands that can be promoted into managed processes. Think PM2 or systemd, but with a native GUI.
 
 ## 🎯 Why?
@@ -20,6 +22,14 @@ Stop juggling multiple terminal windows or remembering `pm2` commands. Define yo
   - ⏹️ Stop running command
   - 📁 `cd` session directory handling
   - ➕ "Add to processes" for commands you want to manage long-term
+
+## 📸 Screenshots
+
+**Task page - logs, metrics & controls**
+![Task page](images/task%20page.png)
+
+**Integrated terminal pane**
+![Terminal](images/terminal.png)
 
 ## 🛠️ Tech Stack
 

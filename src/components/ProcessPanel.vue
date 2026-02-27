@@ -43,6 +43,11 @@
               <path d="M6 1v1.5M6 9.5V11M11 6H9.5M2.5 6H1M9.2 2.8l-1.1 1.1M3.9 8.1L2.8 9.2M9.2 9.2L8.1 8.1M3.9 3.9L2.8 2.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
             </svg>
           </button>
+          <button class="hdr-btn close-btn" @click="closePanel" title="Close">
+            <svg viewBox="0 0 12 12" width="10" height="10" fill="none">
+              <path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -290,6 +295,10 @@ const restartProcess = async () => {
   catch (e) { await openAlert('Restart Failed', String(e)) }
 }
 
+const closePanel = () => {
+  store.selectedProcessId = null
+}
+
 const saveSettings = async () => {
   if (!store.selectedProcessId) return
   saving.value = true
@@ -492,6 +501,8 @@ function parseAnsi(raw: string): string {
 .hdr-btn.restart { background: #1c1a08; color: #f59e0b; border-color: #78350f; }
 .hdr-btn.settings-btn { background: #1a1a1a; color: #475569; border-color: #252525; width: 32px; padding: 5px; justify-content: center; }
 .hdr-btn.settings-btn.active { background: #1e1b4b; color: #818cf8; border-color: #312e81; }
+.hdr-btn.close-btn { background: #1a1a1a; color: #475569; border-color: #252525; width: 32px; padding: 5px; justify-content: center; }
+.hdr-btn.close-btn:hover { color: #cbd5e1; }
 
 /* ── Metrics ── */
 .metrics-row {
