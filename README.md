@@ -1,4 +1,8 @@
+<div align="center">
+
 # ⚡ Process Manager
+
+</div>
 
 ![Home](images/home.png)
 
