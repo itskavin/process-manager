@@ -7,8 +7,8 @@ on:
 
 jobs:
   release:
-    name: Build & Release (Windows)
-    runs-on: windows-latest
+    name: Build & Release (Windows cross-compile on Ubuntu)
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
@@ -18,25 +18,56 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ── System deps ─────────────────────────────────────────────────────────
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc-mingw-w64-x86-64 \
+            g++-mingw-w64-x86-64 \
+            nsis \
+            llvm \
+            clang \
+            libssl-dev \
+            pkg-config
+
+      # ── Bun + frontend ──────────────────────────────────────────────────────
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
       - name: Install frontend dependencies
         run: bun install
 
-      - name: Set up Rust (stable)
+      # ── Rust ────────────────────────────────────────────────────────────────
+      - name: Set up Rust (stable) + Windows target
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
 
       - name: Cache Rust build
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
+      # Point cargo at the mingw linker for the Windows target
+      - name: Configure cargo cross-linker
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << 'EOF'
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32-gcc"
+          ar = "x86_64-w64-mingw32-ar"
+          EOF
+
+      # ── Build & release ─────────────────────────────────────────────────────
       - name: Build & publish Tauri release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tell Tauri to cross-compile for Windows
+          TAURI_TARGET: x86_64-pc-windows-gnu
         with:
+          args: --target x86_64-pc-windows-gnu
           tagName: ${{ github.ref_name }}
           releaseName: '⚡ Process Manager ${{ github.ref_name }}'
           releaseBody: |
