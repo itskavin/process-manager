@@ -1,8 +1,16 @@
 <template>
   <div class="sidebar">
-    <!-- Header -->
+
+    <!-- ── Header ── -->
     <div class="sidebar-header">
-      <span class="sidebar-title">Processes</span>
+      <div class="header-left">
+        <span class="sidebar-title">Processes</span>
+        <span v-if="store.processes.length" class="count-pill">
+          <span class="count-running">{{ runningCount }}</span>
+          <span class="count-sep">/</span>
+          <span>{{ store.processes.length }}</span>
+        </span>
+      </div>
       <div class="header-actions">
         <button class="icon-btn success" @click="startAllProcesses" title="Start All">
           <svg viewBox="0 0 10 10" width="9" height="9"><path d="M2 1.5l7 3.5-7 3.5V1.5z" fill="currentColor"/></svg>
@@ -13,107 +21,129 @@
       </div>
     </div>
 
-    <!-- Add Process Form -->
-    <div class="add-form">
-      <div class="input-group">
-        <label class="input-label">Name</label>
-        <input
-          v-model="newName"
-          type="text"
-          placeholder="e.g. API Server"
-          class="field-input"
-          @keyup.enter="focusCommand"
-          ref="nameInput"
-        />
-      </div>
-      <div class="input-group">
-        <label class="input-label">Command</label>
-        <input
-          v-model="newCommand"
-          type="text"
-          placeholder="e.g. node server.js"
-          class="field-input mono"
-          @keyup.enter="focusWorkingDir"
-          ref="commandInput"
-        />
-      </div>
-      <div class="input-group">
-        <label class="input-label">Working Directory <span class="label-opt">(optional)</span></label>
-        <input
-          v-model="newWorkingDir"
-          type="text"
-          placeholder="e.g. C:\\projects\\api"
-          class="field-input mono"
-          @keyup.enter="addProcess"
-          ref="workingDirInput"
-        />
-      </div>
-      <button class="add-btn" @click="addProcess" :disabled="adding">
-        <svg v-if="!adding" viewBox="0 0 10 10" width="10" height="10"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <span>{{ adding ? 'Adding…' : 'Add Process' }}</span>
+    <!-- ── Search ── -->
+    <div class="search-bar">
+      <svg viewBox="0 0 14 14" width="13" height="13" fill="none" class="search-icon">
+        <circle cx="6" cy="6" r="4.5" stroke="#374151" stroke-width="1.3"/>
+        <path d="M9.5 9.5l2.5 2.5" stroke="#374151" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+      <input
+        v-model="search"
+        type="text"
+        placeholder="Filter processes…"
+        class="search-input"
+        @keyup.escape="search = ''"
+      />
+      <button v-if="search" class="search-clear" @click="search = ''" title="Clear">
+        <svg viewBox="0 0 10 10" width="8" height="8"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
       </button>
     </div>
 
-    <!-- Process List -->
+    <!-- ── Process list ── -->
     <div class="list">
+
+      <div v-if="store.processes.length === 0" class="empty-state">
+        <div class="empty-icon">
+          <svg viewBox="0 0 40 40" width="38" height="38" fill="none">
+            <rect x="4" y="8" width="32" height="22" rx="3" stroke="#1e293b" stroke-width="1.5"/>
+            <path d="M14 36h12M20 30v6" stroke="#1e293b" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M12 18l3 3 5-5" stroke="#312e81" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <p class="empty-title">No processes yet</p>
+        <p class="empty-hint">Click <strong>New Process</strong> below to get started.</p>
+      </div>
+
+      <div v-else-if="filteredProcesses.length === 0" class="empty-state">
+        <p class="empty-title">No matches</p>
+        <p class="empty-hint">Try a different search term.</p>
+      </div>
+
       <div
         v-for="p in filteredProcesses"
         :key="p.id"
-        :class="['process-row', { selected: store.selectedProcessId === p.id }]"
+        :class="['process-row', `row-${p.status.toLowerCase()}`, { selected: store.selectedProcessId === p.id }]"
         @click="store.selectedProcessId = p.id"
       >
-        <div class="row-top">
-          <span :class="['dot', dotClass(p.status)]"></span>
-          <div class="row-info">
-            <span class="p-name">{{ p.name }}</span>
-            <span class="p-cmd">{{ p.command }}{{ p.args?.length ? ' ' + p.args.join(' ') : '' }}</span>
+        <!-- Main row content -->
+        <div class="row-content">
+          <div class="row-indicator" :class="`ind-${p.status.toLowerCase()}`"></div>
+          <div class="row-body">
+            <div class="row-top">
+              <span class="p-name">{{ p.name }}</span>
+              <span :class="['status-pill', `pill-${p.status.toLowerCase()}`]">{{ p.status }}</span>
+            </div>
+            <div class="row-bottom">
+              <span class="p-cmd">{{ p.command }}{{ p.args?.length ? ' ' + p.args.join(' ') : '' }}</span>
+              <span v-if="p.status === 'Crashed' && p.crashCount" class="crash-badge">{{ p.crashCount }}x</span>
+            </div>
+            <div v-if="p.pid && p.status === 'Running'" class="row-meta">
+              PID {{ p.pid }}&nbsp; · &nbsp;{{ formatUptime(p.uptimeMs) }}
+            </div>
           </div>
-          <span v-if="p.status === 'Crashed'" class="crash-tag" title="Crash count">{{ p.crashCount }}x</span>
         </div>
 
+        <!-- Action bar (hover/selected) -->
         <div class="row-actions" @click.stop>
-          <button v-if="p.status !== 'Running'" class="act start" @click="startProcess(p.id)" title="Start">▶</button>
-          <button v-if="p.status === 'Running'" class="act stop" @click="stopProcess(p.id)" title="Stop">⏹</button>
-          <button class="act restart" @click="restartProcess(p.id)" title="Restart">↻</button>
-          <button class="act remove" @click="removeProcess(p.id)" title="Remove">✕</button>
-        </div>
-
-        <div v-if="p.pid" class="row-meta">
-          <span class="meta-item">PID&nbsp;{{ p.pid }}</span>
-          <span class="meta-sep">·</span>
-          <span class="meta-item">{{ formatUptime(p.uptimeMs) }}</span>
+          <button v-if="p.status !== 'Running'" class="ra-btn start" @click="startProcess(p.id)" title="Start">
+            <svg viewBox="0 0 10 10" width="8" height="8"><path d="M2 1.5l7 3.5-7 3.5V1.5z" fill="currentColor"/></svg>
+            Start
+          </button>
+          <button v-if="p.status === 'Running'" class="ra-btn stop" @click="stopProcess(p.id)" title="Stop">
+            <svg viewBox="0 0 10 10" width="8" height="8"><rect x="1.5" y="1.5" width="7" height="7" rx="1" fill="currentColor"/></svg>
+            Stop
+          </button>
+          <button class="ra-btn restart" @click="restartProcess(p.id)" title="Restart">
+            <svg viewBox="0 0 12 12" width="9" height="9" fill="none">
+              <path d="M10 6A4 4 0 112 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M10 3v3h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="ra-btn remove" @click="removeProcess(p.id)" title="Remove">
+            <svg viewBox="0 0 10 12" width="8" height="9" fill="none">
+              <path d="M1 3h8M3 3V1.5h4V3M2 3l.5 7h5L8 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
         </div>
       </div>
 
-      <div v-if="store.processes.length === 0" class="empty">
-        <span>No processes yet.</span>
-        <span class="empty-hint">Add one above to get started.</span>
-      </div>
     </div>
+
+    <!-- ── Footer ── -->
+    <div class="sidebar-footer">
+      <button class="new-process-btn" @click="showAddModal = true">
+        <svg viewBox="0 0 12 12" width="11" height="11" fill="none">
+          <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        New Process
+      </button>
+    </div>
+
+    <!-- Add process modal -->
+    <AddProcessModal
+      :show="showAddModal"
+      @close="showAddModal = false"
+      @added="onProcessAdded"
+    />
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useProcessStore } from '@/stores/processStore'
+import { useDialog } from '@/composables/useDialog'
+import AddProcessModal from '@/components/AddProcessModal.vue'
 
 const store = useProcessStore()
+const { openConfirm, openAlert } = useDialog()
+
 const search = ref('')
-const showAdd = ref(false)
-const newName = ref('')
-const newCommand = ref('')
-const newWorkingDir = ref('')
-const adding = ref(false)
-const commandInput = ref<HTMLInputElement>()
-const workingDirInput = ref<HTMLInputElement>()
+const showAddModal = ref(false)
 
-const focusCommand = () => {
-  commandInput.value?.focus()
-}
-
-const focusWorkingDir = () => {
-  workingDirInput.value?.focus()
-}
+const runningCount = computed(() =>
+  store.processes.filter((p: any) => p.status === 'Running').length
+)
 
 const filteredProcesses = computed(() => {
   if (!search.value.trim()) return store.processes
@@ -123,59 +153,41 @@ const filteredProcesses = computed(() => {
   )
 })
 
-const parseCommand = (raw: string): { cmd: string; args: string[] } => {
-  const parts = raw.trim().split(/\s+/)
-  return { cmd: parts[0] ?? '', args: parts.slice(1) }
-}
-
-const addProcess = async () => {
-  if (!newName.value.trim() || !newCommand.value.trim()) return
-  adding.value = true
-  try {
-    const { cmd, args } = parseCommand(newCommand.value)
-    await store.addProcess(
-      newName.value.trim(),
-      cmd,
-      args,
-      newWorkingDir.value.trim() || undefined
-    )
-    newName.value = ''
-    newCommand.value = ''
-    newWorkingDir.value = ''
-    showAdd.value = false
-  } catch (e) {
-    alert(`Failed to add: ${e}`)
-  } finally {
-    adding.value = false
-  }
+const onProcessAdded = (id: string) => {
+  store.selectedProcessId = id
 }
 
 const startProcess = async (id: string) => {
-  try { await store.startProcess(id) } catch (e) { alert(`Start failed: ${e}`) }
+  try { await store.startProcess(id) }
+  catch (e) { await openAlert('Start Failed', String(e)) }
 }
 const stopProcess = async (id: string) => {
-  try { await store.stopProcess(id) } catch (e) { alert(`Stop failed: ${e}`) }
+  try { await store.stopProcess(id) }
+  catch (e) { await openAlert('Stop Failed', String(e)) }
 }
 const restartProcess = async (id: string) => {
-  try { await store.restartProcess(id) } catch (e) { alert(`Restart failed: ${e}`) }
+  try { await store.restartProcess(id) }
+  catch (e) { await openAlert('Restart Failed', String(e)) }
 }
 const removeProcess = async (id: string) => {
   const p = store.processes.find((p: any) => p.id === id)
-  if (!confirm(`Remove "${p?.name}"?`)) return
-  try { await store.removeProcess(id) } catch (e) { alert(`Remove failed: ${e}`) }
+  const ok = await openConfirm(
+    'Remove Process',
+    `Remove "${p?.name}"? This cannot be undone.`,
+    { type: 'danger', confirmLabel: 'Remove', cancelLabel: 'Cancel' }
+  )
+  if (!ok) return
+  try { await store.removeProcess(id) }
+  catch (e) { await openAlert('Remove Failed', String(e)) }
 }
 const startAllProcesses = async () => {
-  try { await store.startAll() } catch (e) { alert(`Start all failed: ${e}`) }
+  try { await store.startAll() }
+  catch (e) { await openAlert('Start All Failed', String(e)) }
 }
 const stopAllProcesses = async () => {
-  try { await store.stopAll() } catch (e) { alert(`Stop all failed: ${e}`) }
+  try { await store.stopAll() }
+  catch (e) { await openAlert('Stop All Failed', String(e)) }
 }
-
-const dotClass = (status: string) => ({
-  running: status === 'Running',
-  stopped: status === 'Stopped',
-  crashed: status === 'Crashed',
-})
 
 const formatUptime = (ms: number) => {
   const s = Math.floor(ms / 1000)
@@ -186,317 +198,223 @@ const formatUptime = (ms: number) => {
 </script>
 
 <style scoped>
+/* ── Shell ── */
 .sidebar {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #111;
+  background: #0e0e0e;
   overflow: hidden;
 }
 
-/* Header */
+/* ── Header ── */
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 0 13px;
+  height: 44px;
   border-bottom: 1px solid #1a1a1a;
   flex-shrink: 0;
 }
+.header-left { display: flex; align-items: center; gap: 8px; }
 .sidebar-title {
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.7rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: #475569;
+  letter-spacing: 0.1em;
+  color: #374151;
 }
-.count-badge {
-  font-size: 0.65rem;
-  background: #1e1e1e;
-  color: #64748b;
-  padding: 1px 6px;
-  border-radius: 10px;
-  border: 1px solid #2a2a2a;
+.count-pill {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 0.67rem;
+  font-weight: 600;
+  background: #141414;
+  border: 1px solid #1e1e1e;
+  border-radius: 20px;
+  padding: 1px 8px;
+  color: #4b5563;
 }
+.count-running { color: #4ade80; }
+.count-sep { color: #222; margin: 0 1px; }
 .header-actions { display: flex; gap: 5px; }
 .icon-btn {
-  width: 28px; height: 28px;
+  width: 26px; height: 26px;
   display: flex; align-items: center; justify-content: center;
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
-  color: #475569;
+  border-radius: 6px; cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  border: 1px solid transparent;
 }
-.icon-btn:hover { background: #252525; border-color: #333; }
 .icon-btn.success { background: #052e16; color: #22c55e; border-color: #14532d; }
 .icon-btn.success:hover { background: #0a3d20; border-color: #16a34a; }
 .icon-btn.danger  { background: #2d0a0a; color: #ef4444; border-color: #7f1d1d; }
 .icon-btn.danger:hover  { background: #3d1010; border-color: #dc2626; }
 
-/* Search */
-.search-wrap {
-  position: relative;
-  padding: 8px 10px;
-  border-bottom: 1px solid #1a1a1a;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.search-icon { flex-shrink: 0; }
-.search-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  font-size: 0.8rem;
-  color: #cbd5e1;
-  caret-color: #6366f1;
-}
-.search-input::placeholder { color: #374151; }
-.search-clear {
-  background: none;
-  border: none;
-  color: #475569;
-  cursor: pointer;
-  font-size: 0.9rem;
-  padding: 0 2px;
-  line-height: 1;
-}
-.search-clear:hover { color: #94a3b8; }
-
-/* List */
-.list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 0;
-}
-
-.process-row {
-  padding: 8px 12px;
-  cursor: pointer;
-  border-left: 2px solid transparent;
-  transition: background 0.1s, border-color 0.1s;
-}
-.process-row:hover { background: #161616; }
-.process-row.selected {
-  background: #141c2e;
-  border-left-color: #6366f1;
-}
-
-.row-top {
+/* ── Search ── */
+.search-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-/* Dot */
-.dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
+  padding: 0 13px;
+  height: 36px;
+  border-bottom: 1px solid #161616;
   flex-shrink: 0;
-  transition: box-shadow 0.3s;
+  background: #080808;
 }
-.dot.running { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
-.dot.stopped { background: #334155; }
-.dot.crashed { background: #ef4444; box-shadow: 0 0 6px #ef444488; }
+.search-icon { flex-shrink: 0; }
+.search-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  font-size: 0.79rem; color: #94a3b8; caret-color: #6366f1;
+}
+.search-input::placeholder { color: #212d3a; }
+.search-clear {
+  background: none; border: none; color: #374151; cursor: pointer;
+  padding: 2px; display: flex; align-items: center; transition: color 0.12s;
+}
+.search-clear:hover { color: #64748b; }
 
-.row-info { flex: 1; min-width: 0; }
+/* ── List ── */
+.list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Empty ── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; padding: 3rem 1.5rem 2rem; gap: 8px;
+}
+.empty-icon { margin-bottom: 6px; opacity: 0.6; }
+.empty-title { font-size: 0.85rem; font-weight: 600; color: #374151; }
+.empty-hint { font-size: 0.74rem; color: #1e293b; line-height: 1.55; }
+.empty-hint strong { color: #4338ca; font-weight: 700; }
+
+/* ── Process row ── */
+.process-row {
+  position: relative;
+  cursor: pointer;
+  transition: background 0.08s;
+  border-bottom: 1px solid #111;
+}
+.process-row:last-child { border-bottom: none; }
+.process-row:hover { background: #141414; }
+.process-row.selected { background: #0c1224; }
+
+.row-content {
+  display: flex;
+  align-items: stretch;
+  padding: 10px 12px 10px 0;
+  min-height: 52px;
+}
+.row-indicator {
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  flex-shrink: 0;
+  margin-right: 11px;
+  align-self: stretch;
+  transition: background 0.2s;
+}
+.ind-running { background: #22c55e; box-shadow: 0 0 6px #22c55e55; }
+.ind-stopped { background: #1e1e1e; }
+.ind-crashed { background: #ef4444; box-shadow: 0 0 6px #ef444455; }
+.process-row.selected .ind-stopped { background: #312e81; }
+
+.row-body { flex: 1; min-width: 0; }
+.row-top {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 3px;
+}
 .p-name {
-  display: block;
-  font-size: 0.84rem;
-  font-weight: 600;
-  color: #cbd5e1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.3;
+  flex: 1; font-size: 0.84rem; font-weight: 600;
+  color: #94a3b8;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3;
 }
-.p-cmd {
-  display: block;
-  font-size: 0.72rem;
-  color: #374151;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: 'Cascadia Code', 'Courier New', monospace;
-}
+.process-row:hover .p-name { color: #cbd5e1; }
+.process-row.selected .p-name { color: #e2e8f0; }
 
 .status-pill {
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 20px;
-  flex-shrink: 0;
+  font-size: 0.57rem; font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 1.5px 6px; border-radius: 20px; flex-shrink: 0;
+  border: 1px solid transparent;
 }
-.pill-running { background: #052e16; color: #22c55e; border: 1px solid #14532d; }
-.pill-stopped { background: #0f172a; color: #475569; border: 1px solid #1e293b; }
-.pill-crashed { background: #2d0a0a; color: #ef4444; border: 1px solid #7f1d1d; }
+.pill-running { background: #052e16; color: #4ade80; border-color: #14532d; }
+.pill-stopped { background: #0f172a; color: #374151; border-color: #1e293b; }
+.pill-crashed { background: #200a0a; color: #f87171; border-color: #450a0a; }
+
+.row-bottom { display: flex; align-items: center; gap: 6px; }
+.p-cmd {
+  font-size: 0.69rem; color: #1e2d3d;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  flex: 1; min-width: 0;
+}
+.process-row:hover .p-cmd,
+.process-row.selected .p-cmd { color: #2a3f55; }
+
+.crash-badge {
+  font-size: 0.62rem; font-weight: 700; color: #f87171;
+  background: #200a0a; border: 1px solid #450a0a;
+  padding: 0 5px; border-radius: 10px; flex-shrink: 0;
+}
 
 .row-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  padding-left: 15px;
-  font-size: 0.69rem;
-  color: #4b5563;
+  margin-top: 4px; font-size: 0.67rem;
+  color: #2a3f3a;
   font-family: 'Cascadia Code', 'Consolas', monospace;
 }
-.meta-item { color: #4b5563; }
-.meta-sep { color: #2a2a2a; }
-.crash-tag {
-  font-size: 0.67rem;
-  color: #ef4444;
-  opacity: 0.8;
-  margin-left: 4px;
-}
+.process-row.selected .row-meta { color: #3a5a40; }
 
-/* Actions */
+/* ── Row actions ── */
 .row-actions {
   display: none;
+  align-items: center;
   gap: 4px;
-  margin-top: 6px;
-  padding-left: 15px;
+  padding: 0 12px 9px 14px;
 }
 .process-row:hover .row-actions,
 .process-row.selected .row-actions { display: flex; }
 
-.act {
-  padding: 2px 10px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.72rem;
-  font-weight: 500;
-  transition: opacity 0.12s;
+.ra-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid transparent; border-radius: 5px;
+  cursor: pointer; font-size: 0.69rem; font-weight: 600;
+  transition: opacity 0.1s, filter 0.1s;
 }
-.act:hover { opacity: 0.8; }
-.act.start  { background: #052e16; color: #22c55e; border-color: #14532d; }
-.act.stop   { background: #2d0a0a; color: #ef4444; border-color: #7f1d1d; }
-.act.restart{ background: #1c1a08; color: #f59e0b; border-color: #78350f; }
-.act.remove { background: #1a1a1a; color: #475569; border-color: #2a2a2a; }
+.ra-btn:hover { opacity: 0.85; }
+.ra-btn.start   { background: #052e16; color: #4ade80; border-color: #14532d; }
+.ra-btn.stop    { background: #200a0a; color: #f87171; border-color: #450a0a; }
+.ra-btn.restart { background: #17120a; color: #fbbf24; border-color: #78350f; padding: 3px 7px; }
+.ra-btn.remove  { background: #111; color: #374151; border-color: #1e1e1e; padding: 3px 7px; }
+.ra-btn.remove:hover { background: #1a0505; color: #f87171; border-color: #450a0a; opacity: 1; }
 
-/* Empty */
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 3rem 1rem;
-  color: #334155;
-  font-size: 0.82rem;
-  text-align: center;
-}
-.empty-hint { font-size: 0.72rem; color: #1e293b; }
-
-/* Add section */
-.add-section {
+/* ── Footer ── */
+.sidebar-footer {
+  padding: 10px 12px;
   border-top: 1px solid #1a1a1a;
   flex-shrink: 0;
-  padding: 8px 10px;
+  background: #090909;
 }
-
-.toggle-add {
+.new-process-btn {
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 6px;
-  background: #161616;
-  border: 1px solid #1e1e1e;
-  border-radius: 6px;
-  color: #475569;
-  font-size: 0.78rem;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 9px;
+  background: #100e1a;
+  border: 1.5px dashed #2d2a5e;
+  border-radius: 8px;
+  color: #4338ca;
+  font-size: 0.79rem; font-weight: 700;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  letter-spacing: 0.01em;
 }
-.toggle-add:hover { background: #1e1e1e; color: #94a3b8; border-color: #2a2a2a; }
-
-.add-form {
-  padding: 10px 12px;
-  border-bottom: 1px solid #1a1a1a;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  flex-shrink: 0;
-  background: #0f0f0f;
-}
-
-.input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.input-label {
-  font-size: 0.67rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: #4b5563;
-  user-select: none;
-}
-.label-opt {
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  color: #374151;
-}
-
-.field-input {
-  width: 100%;
-  padding: 7px 10px;
-  background: #141414;
-  border: 1px solid #222;
-  border-radius: 6px;
-  color: #cbd5e1;
-  font-size: 0.82rem;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  font-family: inherit;
-}
-.field-input.mono {
-  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
-  font-size: 0.78rem;
-}
-.field-input:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
-}
-.field-input::placeholder { color: #2a3a4a; }
-.field-input:hover:not(:focus) { border-color: #2e2e2e; }
-
-.add-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px;
+.new-process-btn:hover {
   background: #1e1b4b;
-  border: 1px solid #312e81;
-  border-radius: 6px;
+  border-color: #6366f1;
+  border-style: solid;
   color: #a5b4fc;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  margin-top: 2px;
 }
-.add-btn:hover:not(:disabled) { background: #2d2a5e; border-color: #4338ca; color: #c7d2fe; }
-.add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* Slide transition */
-.slide-enter-active,
-.slide-leave-active { transition: all 0.18s ease; }
-.slide-enter-from,
-.slide-leave-to { opacity: 0; transform: translateY(-6px); max-height: 0; }
-.slide-enter-to,
-.slide-leave-from { opacity: 1; transform: translateY(0); max-height: 300px; }
 </style>

@@ -177,8 +177,10 @@
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useProcessStore } from '@/stores/processStore'
+import { useDialog } from '@/composables/useDialog'
 
 const store = useProcessStore()
+const { openConfirm, openAlert } = useDialog()
 const showSettings = ref(false)
 const autoScroll = ref(true)
 const saving = ref(false)
@@ -273,19 +275,19 @@ const loadLogs = async () => {
 const startProcess = async () => {
   if (!store.selectedProcessId) return
   try { await store.startProcess(store.selectedProcessId) }
-  catch (e) { alert(`Start failed: ${e}`) }
+  catch (e) { await openAlert('Start Failed', String(e)) }
 }
 
 const stopProcess = async () => {
   if (!store.selectedProcessId) return
   try { await store.stopProcess(store.selectedProcessId) }
-  catch (e) { alert(`Stop failed: ${e}`) }
+  catch (e) { await openAlert('Stop Failed', String(e)) }
 }
 
 const restartProcess = async () => {
   if (!store.selectedProcessId) return
   try { await store.restartProcess(store.selectedProcessId) }
-  catch (e) { alert(`Restart failed: ${e}`) }
+  catch (e) { await openAlert('Restart Failed', String(e)) }
 }
 
 const saveSettings = async () => {
@@ -303,7 +305,7 @@ const saveSettings = async () => {
     savedMsg.value = true
     setTimeout(() => { savedMsg.value = false }, 2000)
   } catch (e) {
-    alert(`Failed to save: ${e}`)
+    await openAlert('Save Failed', String(e))
   } finally {
     saving.value = false
   }
@@ -312,9 +314,15 @@ const saveSettings = async () => {
 const refreshLogs = async () => { await loadLogs() }
 
 const clearLogs = async () => {
-  if (!store.selectedProcessId || !confirm('Clear all logs?')) return
+  if (!store.selectedProcessId) return
+  const ok = await openConfirm(
+    'Clear Logs',
+    'Delete all output logs for this process? This cannot be undone.',
+    { type: 'danger', confirmLabel: 'Clear Logs', cancelLabel: 'Cancel' }
+  )
+  if (!ok) return
   try { await store.clearLogs(store.selectedProcessId) }
-  catch (e) { alert(`Failed to clear: ${e}`) }
+  catch (e) { await openAlert('Clear Failed', String(e)) }
 }
 
 const formatUptime = (ms: number) => {

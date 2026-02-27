@@ -14,6 +14,12 @@
         </span>
       </div>
       <div class="titlebar-controls">
+        <button class="wc wc-terminal" :class="{ active: terminalOpen }" @click.stop="terminalOpen = !terminalOpen" title="Toggle terminal">
+          <svg viewBox="0 0 14 14" width="12" height="12" fill="none">
+            <polyline points="1,4 5,7 1,10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="6" y1="10" x2="13" y2="10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
         <button class="wc wc-min" @click.stop="minimize" title="Minimize">
           <svg viewBox="0 0 10 1" width="10" height="1"><rect width="10" height="1" fill="currentColor"/></svg>
         </button>
@@ -33,23 +39,61 @@
       <aside class="sidebar">
         <ProcessList />
       </aside>
-      <main class="main">
-        <ProcessPanel />
-      </main>
+      <div class="main-col">
+        <main class="main">
+          <ProcessPanel />
+        </main>
+        <!-- Resizable terminal panel -->
+        <div
+          v-if="terminalOpen"
+          class="terminal-panel"
+          :style="{ height: terminalHeight + 'px' }"
+        >
+          <div class="terminal-resize-handle" @mousedown="startResize" />
+          <TerminalPane @close="terminalOpen = false" />
+        </div>
+      </div>
     </div>
+    <AppDialog />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useProcessStore } from '@/stores/processStore'
 import ProcessList from '@/components/ProcessList.vue'
 import ProcessPanel from '@/components/ProcessPanel.vue'
+import AppDialog from '@/components/AppDialog.vue'
+import TerminalPane from '@/components/TerminalPane.vue'
 
 const store = useProcessStore()
 const win = getCurrentWindow()
+
+const terminalOpen = ref(false)
+const terminalHeight = ref(280)
+let resizing = false
+let resizeStartY = 0
+let resizeStartH = 0
+
+function startResize(e: MouseEvent) {
+  resizing = true
+  resizeStartY = e.clientY
+  resizeStartH = terminalHeight.value
+  window.addEventListener('mousemove', onResize)
+  window.addEventListener('mouseup', stopResize)
+}
+function onResize(e: MouseEvent) {
+  if (!resizing) return
+  const delta = resizeStartY - e.clientY
+  terminalHeight.value = Math.max(140, Math.min(700, resizeStartH + delta))
+}
+function stopResize() {
+  resizing = false
+  window.removeEventListener('mousemove', onResize)
+  window.removeEventListener('mouseup', stopResize)
+}
 
 const runningCount = computed(() =>
   store.processes.filter((p: any) => p.status === 'Running').length
@@ -170,6 +214,7 @@ html, body, #app {
 }
 .wc:hover { background: #1e1e1e; color: #e2e8f0; }
 .wc-close:hover { background: #c0392b !important; color: #fff !important; }
+.wc-terminal.active { color: #6366f1; background: #1e1e2e; }
 
 /* ── Workspace ── */
 .workspace {
@@ -180,8 +225,8 @@ html, body, #app {
 }
 
 .sidebar {
-  width: 272px;
-  min-width: 200px;
+  width: 290px;
+  min-width: 220px;
   flex-shrink: 0;
   border-right: 1px solid #1a1a1a;
   display: flex;
@@ -189,13 +234,43 @@ html, body, #app {
   overflow: hidden;
 }
 
-.main {
+.main-col {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.main {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
+
+.terminal-panel {
+  flex-shrink: 0;
+  border-top: 1px solid #1a1a1a;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.terminal-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: ns-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background 0.15s;
+}
+.terminal-resize-handle:hover { background: #6366f1; }
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }

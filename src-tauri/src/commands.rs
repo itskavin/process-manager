@@ -2,6 +2,7 @@ use crate::config_handler::ConfigHandler;
 use crate::log_handler::LogHandler;
 use crate::monitoring::Monitoring;
 use crate::process_manager::ProcessManager;
+use crate::terminal::TerminalManager;
 use crate::types::{ProcessConfig, ProcessState};
 use chrono::Local;
 use serde_json::json;
@@ -16,6 +17,8 @@ pub struct AppState {
     pub log_handler: Arc<LogHandler>,
     /// Persistent sysinfo System — keeps prior CPU snapshot so delta is accurate.
     pub system: Arc<Mutex<System>>,
+    /// Integrated terminal sessions.
+    pub terminal: Arc<Mutex<TerminalManager>>,
 }
 
 /// Spawn background threads that read stdout/stderr from a child process,
@@ -377,4 +380,165 @@ pub async fn stop_all(state: State<'_, AppState>, window: WebviewWindow) -> Resu
     }
 
     Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Terminal commands
+// ═══════════════════════════════════════════════════════════════
+
+/// Run a shell command in the given terminal session.
+/// Streams stdout/stderr via `terminal:output:{session_id}` events.
+/// Emits `terminal:done:{session_id}` when the process exits.
+#[tauri::command]
+pub async fn terminal_run(
+    session_id: String,
+    command: String,
+    job_id: String,
+    state: State<'_, AppState>,
+    window: WebviewWindow,
+) -> Result<(), String> {
+    // Grab current CWD for this session
+    let cwd = {
+        let mut terminal = state.terminal.lock().map_err(|e| e.to_string())?;
+        terminal.get_cwd(&session_id)
+    };
+
+    // Spawn via PowerShell on Windows
+    let mut child = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &command])
+        .current_dir(&cwd)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn command: {}", e))?;
+
+    let stdout = child.stdout.take().expect("stdout piped");
+    let stderr = child.stderr.take().expect("stderr piped");
+
+    // Wrap child so both streaming threads + kill command can access it
+    let child_arc: std::sync::Arc<Mutex<Option<std::process::Child>>> =
+        std::sync::Arc::new(Mutex::new(Some(child)));
+
+    // Register job
+    {
+        let mut terminal = state.terminal.lock().map_err(|e| e.to_string())?;
+        terminal.add_job(job_id.clone(), std::sync::Arc::clone(&child_arc));
+    }
+
+    // ── stdout reader thread ──
+    {
+        let win = window.clone();
+        let sid = session_id.clone();
+        let jid = job_id.clone();
+        std::thread::spawn(move || {
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines() {
+                if let Ok(msg) = line {
+                    let ts = Local::now().format("%H:%M:%S%.3f").to_string();
+                    let _ = win.emit(
+                        &format!("terminal:output:{}", sid),
+                        json!({ "jobId": jid, "line": msg, "isError": false, "timestamp": ts }),
+                    );
+                }
+            }
+        });
+    }
+
+    // ── stderr reader + exit-waiter thread ──
+    {
+        let win = window.clone();
+        let sid = session_id.clone();
+        let jid = job_id.clone();
+        let child_ref = std::sync::Arc::clone(&child_arc);
+        let terminal_arc = std::sync::Arc::clone(&state.terminal);
+        std::thread::spawn(move || {
+            // Read stderr
+            let reader = std::io::BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(msg) = line {
+                    let ts = Local::now().format("%H:%M:%S%.3f").to_string();
+                    let _ = win.emit(
+                        &format!("terminal:output:{}", sid),
+                        json!({ "jobId": jid, "line": msg, "isError": true, "timestamp": ts }),
+                    );
+                }
+            }
+
+            // Wait for child to exit
+            let exit_code = {
+                let mut guard = child_ref.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(ref mut c) = *guard {
+                    c.wait().map(|s| s.code()).ok().flatten().unwrap_or(-1)
+                } else {
+                    -1
+                }
+            };
+
+            // Remove completed job from manager
+            if let Ok(mut mgr) = terminal_arc.lock() {
+                mgr.remove_job(&jid);
+            }
+
+            let _ = win.emit(
+                &format!("terminal:done:{}", sid),
+                json!({ "jobId": jid, "exitCode": exit_code }),
+            );
+        });
+    }
+
+    Ok(())
+}
+
+/// Kill a running terminal job.
+#[tauri::command]
+pub async fn terminal_kill(
+    job_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut terminal = state.terminal.lock().map_err(|e| e.to_string())?;
+    terminal.kill_job(&job_id)
+}
+
+/// Update the working directory for a terminal session.
+/// Returns the resolved absolute CWD or an error.
+#[tauri::command]
+pub async fn terminal_set_cwd(
+    session_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let mut terminal = state.terminal.lock().map_err(|e| e.to_string())?;
+    terminal.set_cwd(&session_id, &path)
+}
+
+/// Return the current working directory for a terminal session.
+#[tauri::command]
+pub async fn terminal_get_cwd(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let mut terminal = state.terminal.lock().map_err(|e| e.to_string())?;
+    Ok(terminal.get_cwd(&session_id))
+}
+
+/// Promote a terminal command to a managed process.
+/// The running job (if any) is left untouched; a new process entry is created.
+#[tauri::command]
+pub async fn terminal_add_process(
+    name: String,
+    command: String,
+    working_dir: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let parts: Vec<&str> = command.trim().splitn(2, ' ').collect();
+    let exe = parts.first().copied().unwrap_or("").to_string();
+    let args: Vec<String> = if parts.len() > 1 {
+        parts[1].split_whitespace().map(|s| s.to_string()).collect()
+    } else {
+        vec![]
+    };
+
+    let mut manager = state.manager.lock().map_err(|e| e.to_string())?;
+    let id = manager.add_process(name, exe, args, working_dir, false);
+    Ok(id)
 }

@@ -3,6 +3,7 @@ mod config_handler;
 mod log_handler;
 mod monitoring;
 mod process_manager;
+mod terminal;
 mod types;
 
 use commands::AppState;
@@ -39,6 +40,7 @@ pub fn run() {
         manager: Arc::clone(&process_manager),
         log_handler: Arc::clone(&log_handler),
         system: Arc::new(std::sync::Mutex::new(sys)),
+        terminal: Arc::new(std::sync::Mutex::new(terminal::TerminalManager::new())),
     };
 
     tauri::Builder::default()
@@ -63,8 +65,14 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .on_tray_icon_event(|tray, event| {
-                    // Single click on tray icon → show window
-                    if let tauri::tray::TrayIconEvent::Click { .. } = event {
+                    // Left-click on tray icon → show window.
+                    // Right-click is handled automatically by the menu.
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
                         if let Some(w) = tray.app_handle().get_webview_window("main") {
                             let _ = w.show();
                             let _ = w.set_focus();
@@ -124,6 +132,11 @@ pub fn run() {
             commands::set_auto_start,
             commands::start_all,
             commands::stop_all,
+            commands::terminal_run,
+            commands::terminal_kill,
+            commands::terminal_set_cwd,
+            commands::terminal_get_cwd,
+            commands::terminal_add_process,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
