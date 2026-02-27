@@ -1,8 +1,14 @@
 # ⚡ Process Manager
 
-Modern Windows desktop process runner.
+**A lightweight desktop process supervisor for Windows** — think PM2 or systemd, but with a native GUI.
 
-Run commands, monitor logs/metrics, manage long-running apps, and use an integrated PowerShell terminal — all in one place.
+Manage, monitor, and control long-running commands (dev servers, tunnels, background jobs) from a single interface. Define processes once, start/stop them with a click, view live logs with ANSI colors, track resource usage, and use the built-in PowerShell terminal to run ad-hoc commands that can be promoted into managed processes.
+
+Built with Tauri + Vue for a fast, minimalist experience that runs in your system tray.
+
+## 🎯 Why?
+
+Stop juggling multiple terminal windows or remembering `pm2` commands. Define your dev servers, background workers, or tunnels once, then start/stop/monitor them from a clean UI. Perfect for developers running local microservices, Cloudflare tunnels, database instances, or any long-running CLI tools.
 
 ## ✨ Highlights
 
