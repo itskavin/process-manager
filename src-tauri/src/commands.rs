@@ -404,12 +404,20 @@ pub async fn terminal_run(
     };
 
     // Spawn via PowerShell on Windows
-    let mut child = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &command])
+    #[cfg(target_os = "windows")]
+    use std::os::windows::process::CommandExt;
+    
+    let mut cmd = std::process::Command::new("powershell");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", &command])
         .current_dir(&cwd)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+        .stderr(std::process::Stdio::piped());
+    
+    // Hide console window on Windows
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
     let stdout = child.stdout.take().expect("stdout piped");

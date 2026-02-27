@@ -6,6 +6,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 pub struct ProcessInstance {
     pub id: String,
     pub name: String,
@@ -151,6 +154,11 @@ impl ProcessManager {
         cmd.args(&process.args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        
+        // Hide console window on Windows
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        
         if let Some(ref dir) = process.working_dir {
             cmd.current_dir(dir);
         }
