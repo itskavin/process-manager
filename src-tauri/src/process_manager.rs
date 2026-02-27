@@ -16,6 +16,7 @@ pub struct ProcessInstance {
     pub pid: Option<u32>,
     pub auto_restart: bool,
     pub auto_start: bool,
+    pub working_dir: Option<String>,
     pub start_time: Option<u64>,
     pub crash_count: u32,
     pub should_restart: Arc<AtomicBool>,
@@ -33,6 +34,7 @@ impl ProcessInstance {
             pid: None,
             auto_restart,
             auto_start,
+            working_dir: None,
             start_time: None,
             crash_count: 0,
             should_restart: Arc::new(AtomicBool::new(false)),
@@ -50,6 +52,7 @@ impl ProcessInstance {
             pid: None,
             auto_restart: config.auto_restart,
             auto_start: config.auto_start,
+            working_dir: config.working_dir.clone(),
             start_time: None,
             crash_count: 0,
             should_restart: Arc::new(AtomicBool::new(false)),
@@ -79,6 +82,7 @@ impl ProcessInstance {
             pid: self.pid,
             auto_restart: self.auto_restart,
             auto_start: self.auto_start,
+            working_dir: self.working_dir.clone(),
             uptime_ms: self.get_uptime_ms(),
             crash_count: self.crash_count,
         }
@@ -92,6 +96,7 @@ impl ProcessInstance {
             args: self.args.clone(),
             auto_restart: self.auto_restart,
             auto_start: self.auto_start,
+            working_dir: self.working_dir.clone(),
             env: None,
         }
     }
@@ -108,8 +113,9 @@ impl ProcessManager {
         }
     }
 
-    pub fn add_process(&mut self, name: String, command: String, args: Vec<String>, auto_restart: bool) -> String {
-        let process = ProcessInstance::new(name, command, args, auto_restart, false);
+    pub fn add_process(&mut self, name: String, command: String, args: Vec<String>, working_dir: Option<String>, auto_restart: bool) -> String {
+        let mut process = ProcessInstance::new(name, command, args, auto_restart, false);
+        process.working_dir = working_dir;
         let id = process.id.clone();
         self.processes.insert(id.clone(), process);
         id
@@ -145,6 +151,9 @@ impl ProcessManager {
         cmd.args(&process.args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(ref dir) = process.working_dir {
+            cmd.current_dir(dir);
+        }
 
         match cmd.spawn() {
             Ok(mut child) => {

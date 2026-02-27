@@ -159,11 +159,11 @@ pub async fn add_process(
     name: String,
     command: String,
     args: Vec<String>,
+    working_dir: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let mut manager = state.manager.lock().map_err(|e| e.to_string())?;
-
-    let id = manager.add_process(name, command, args, false);
+    let id = manager.add_process(name, command, args, working_dir, false);
     Ok(id)
 }
 
@@ -185,6 +185,7 @@ pub async fn update_process(
     process_id: String,
     auto_restart: Option<bool>,
     auto_start: Option<bool>,
+    working_dir: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let mut manager = state.manager.lock().map_err(|e| e.to_string())?;
@@ -195,6 +196,12 @@ pub async fn update_process(
         }
         if let Some(as_val) = auto_start {
             process.auto_start = as_val;
+        }
+        // empty string means "clear working dir"
+        match working_dir {
+            Some(ref dir) if dir.is_empty() => process.working_dir = None,
+            Some(dir) => process.working_dir = Some(dir),
+            None => {}
         }
     }
 

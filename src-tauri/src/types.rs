@@ -8,6 +8,7 @@ pub struct ProcessConfig {
     pub args: Vec<String>,
     pub auto_restart: bool,
     pub auto_start: bool,
+    pub working_dir: Option<String>,
     pub env: Option<std::collections::HashMap<String, String>>,
 }
 
@@ -39,6 +40,7 @@ pub struct ProcessState {
     pub pid: Option<u32>,
     pub auto_restart: bool,
     pub auto_start: bool,
+    pub working_dir: Option<String>,
     pub uptime_ms: u64,
     pub crash_count: u32,
 }

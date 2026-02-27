@@ -31,13 +31,15 @@ export const useProcessStore = defineStore("process", () => {
   const addProcess = async (
     name: string,
     command: string,
-    args: string[]
+    args: string[],
+    workingDir?: string
   ) => {
     try {
       const id: string = await invoke("add_process", {
         name,
         command,
         args,
+        workingDir: workingDir || null,
       });
       const newProcess: Process = {
         id,
@@ -47,6 +49,7 @@ export const useProcessStore = defineStore("process", () => {
         status: "Stopped",
         autoRestart: false,
         autoStart: false,
+        workingDir: workingDir || undefined,
         uptimeMs: 0,
         crashCount: 0,
       };
@@ -119,14 +122,21 @@ export const useProcessStore = defineStore("process", () => {
   const updateProcess = async (
     id: string,
     autoRestart?: boolean,
-    autoStart?: boolean
+    autoStart?: boolean,
+    workingDir?: string
   ) => {
     try {
-      await invoke("update_process", { processId: id, autoRestart, autoStart });
+      await invoke("update_process", {
+        processId: id,
+        autoRestart,
+        autoStart,
+        workingDir: workingDir !== undefined ? workingDir : null,
+      });
       const process = processes.value.find((p) => p.id === id);
       if (process) {
         if (autoRestart !== undefined) process.autoRestart = autoRestart;
         if (autoStart !== undefined) process.autoStart = autoStart;
+        if (workingDir !== undefined) process.workingDir = workingDir || undefined;
       }
     } catch (error) {
       console.error("Failed to update process:", error);
@@ -140,7 +150,7 @@ export const useProcessStore = defineStore("process", () => {
       processes.value = result;
       result.forEach((p) => {
         if (!logs[p.id]) logs[p.id] = [];
-        if (!metrics[p.id]) metrics[p.id] = { cpuPercent: 0, memoryMb: 0 };
+        if (!metrics[p.id]) metrics[p.id] = { cpuPercent: 0, memoryMb: 0, memoryPercent: 0 };
       });
     } catch (error) {
       console.error("Failed to load processes:", error);
@@ -217,7 +227,7 @@ export const useProcessStore = defineStore("process", () => {
       processes.value = result;
       result.forEach((p) => {
         if (!logs[p.id]) logs[p.id] = [];
-        if (!metrics[p.id]) metrics[p.id] = { cpuPercent: 0, memoryMb: 0 };
+        if (!metrics[p.id]) metrics[p.id] = { cpuPercent: 0, memoryMb: 0, memoryPercent: 0 };
       });
     } catch (error) {
       console.error("Failed to load config:", error);

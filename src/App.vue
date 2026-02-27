@@ -1,60 +1,102 @@
 <template>
   <div class="app">
-    <div class="titlebar">
-      <span class="app-icon">⚡</span>
-      <span class="app-name">Process Manager</span>
+    <!-- Custom frameless titlebar -->
+    <div class="titlebar" data-tauri-drag-region>
+      <div class="titlebar-left" data-tauri-drag-region>
+        <svg class="app-logo" viewBox="0 0 16 16" fill="none">
+          <path d="M9.5 1L3 9h5.5L6.5 15 13 7H7.5L9.5 1z" fill="#6366f1" stroke="#818cf8" stroke-width="0.5" stroke-linejoin="round"/>
+        </svg>
+        <span class="app-name">Process Manager</span>
+      </div>
+      <div class="titlebar-center" data-tauri-drag-region>
+        <span class="process-count" v-if="store.processes.length">
+          {{ runningCount }}/{{ store.processes.length }} running
+        </span>
+      </div>
+      <div class="titlebar-controls">
+        <button class="wc wc-min" @click.stop="minimize" title="Minimize">
+          <svg viewBox="0 0 10 1" width="10" height="1"><rect width="10" height="1" fill="currentColor"/></svg>
+        </button>
+        <button class="wc wc-max" @click.stop="toggleMaximize" title="Maximize">
+          <svg viewBox="0 0 10 10" width="10" height="10"><rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" fill="none"/></svg>
+        </button>
+        <button class="wc wc-close" @click.stop="hideToTray" title="Minimize to tray">
+          <svg viewBox="0 0 10 10" width="10" height="10">
+            <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
     </div>
+
+    <!-- Main workspace -->
     <div class="workspace">
-      <div class="sidebar-wrap">
+      <aside class="sidebar">
         <ProcessList />
-      </div>
-      <div class="main-wrap">
+      </aside>
+      <main class="main">
         <ProcessPanel />
-      </div>
+      </main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
-import { useProcessStore } from "@/stores/processStore";
-import ProcessList from "@/components/ProcessList.vue";
-import ProcessPanel from "@/components/ProcessPanel.vue";
+import { computed, onMounted, onUnmounted } from 'vue'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { useProcessStore } from '@/stores/processStore'
+import ProcessList from '@/components/ProcessList.vue'
+import ProcessPanel from '@/components/ProcessPanel.vue'
 
-const store = useProcessStore();
+const store = useProcessStore()
+const win = getCurrentWindow()
+
+const runningCount = computed(() =>
+  store.processes.filter((p: any) => p.status === 'Running').length
+)
+
+const minimize = () => win.minimize()
+const toggleMaximize = () => win.toggleMaximize()
+const hideToTray = () => win.hide()
+
+let unlistenStartAll: UnlistenFn | null = null
+let unlistenStopAll: UnlistenFn | null = null
+let pollInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
-  try {
-    await store.loadConfig();
-  } catch {
-    // Fresh install - no config yet
-  }
+  try { await store.loadConfig() } catch { /* fresh install */ }
+  await store.loadProcesses()
 
-  setInterval(async () => {
-    try { await store.loadProcesses(); } catch { /* ignore */ }
-  }, 2000);
-});
+  pollInterval = setInterval(async () => {
+    try { await store.loadProcesses() } catch { /* ignore */ }
+  }, 2000)
+
+  unlistenStartAll = await listen('app:start_all', async () => {
+    try { await store.startAll() } catch { /* ignore */ }
+  })
+  unlistenStopAll = await listen('app:stop_all', async () => {
+    try { await store.stopAll() } catch { /* ignore */ }
+  })
+})
+
+onUnmounted(() => {
+  if (pollInterval) clearInterval(pollInterval)
+  unlistenStartAll?.()
+  unlistenStopAll?.()
+})
 </script>
 
 <style>
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body {
-  margin: 0;
-  padding: 0;
+html, body, #app {
   width: 100%;
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  background: #171717;
-  color: #e2e8f0;
   overflow: hidden;
-}
-
-#app {
-  width: 100%;
-  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  background: #0a0a0a;
+  color: #e2e8f0;
+  font-size: 13px;
 }
 
 .app {
@@ -63,54 +105,101 @@ html, body {
   width: 100%;
   height: 100vh;
   overflow: hidden;
+  background: #0a0a0a;
 }
 
+/* ── Titlebar ── */
 .titlebar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  height: 36px;
-  background: #111;
-  border-bottom: 1px solid #2e2e2e;
+  height: 38px;
+  background: #0d0d0d;
+  border-bottom: 1px solid #1e1e1e;
   flex-shrink: 0;
   user-select: none;
 }
-.app-icon { font-size: 0.9rem; }
-.app-name {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #6b7280;
-  letter-spacing: 0.03em;
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  flex: 0 0 auto;
 }
 
+.app-logo { width: 16px; height: 16px; flex-shrink: 0; }
+
+.app-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.titlebar-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.process-count {
+  font-size: 0.72rem;
+  color: #475569;
+  letter-spacing: 0.02em;
+}
+
+.titlebar-controls {
+  display: flex;
+  align-items: stretch;
+  height: 38px;
+  flex-shrink: 0;
+}
+
+.wc {
+  width: 46px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.wc:hover { background: #1e1e1e; color: #e2e8f0; }
+.wc-close:hover { background: #c0392b !important; color: #fff !important; }
+
+/* ── Workspace ── */
 .workspace {
   display: flex;
   flex: 1;
   overflow: hidden;
+  min-height: 0;
 }
 
-.sidebar-wrap {
-  width: 280px;
-  min-width: 220px;
+.sidebar {
+  width: 272px;
+  min-width: 200px;
   flex-shrink: 0;
-  border-right: 1px solid #2e2e2e;
-  overflow: hidden;
+  border-right: 1px solid #1a1a1a;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  overflow: hidden;
 }
 
-.main-wrap {
+.main {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 100%;
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
 </style>

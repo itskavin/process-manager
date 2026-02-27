@@ -84,6 +84,7 @@ impl LogHandler {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn rotate_log(&self, process_id: &str, max_size_mb: u64) -> Result<(), Box<dyn std::error::Error>> {
         let log_path = self.get_log_file(process_id);
         

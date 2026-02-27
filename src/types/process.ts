@@ -7,6 +7,7 @@ export interface Process {
   pid?: number;
   autoRestart: boolean;
   autoStart: boolean;
+  workingDir?: string;
   uptimeMs: number;
   crashCount: number;
 }
