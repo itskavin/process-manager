@@ -1,7 +1,5 @@
 # ⚡ Process Manager
 
-**A lightweight desktop process supervisor for Windows** 
-
 Manage, monitor, and control long-running commands (dev servers, tunnels, background jobs) from a single interface. Define processes once, start/stop them with a click, view live logs with ANSI colors, track resource usage, and use the built-in PowerShell terminal to run ad-hoc commands that can be promoted into managed processes. Think PM2 or systemd, but with a native GUI.
 
 ## 🎯 Why?
