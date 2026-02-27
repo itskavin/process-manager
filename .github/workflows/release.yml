@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.2)'
+        required: true
+        default: 'v0.1.0'
 
 jobs:
   release:
@@ -68,8 +74,8 @@ jobs:
           TAURI_TARGET: x86_64-pc-windows-gnu
         with:
           args: --target x86_64-pc-windows-gnu
-          tagName: ${{ github.ref_name }}
-          releaseName: '⚡ Process Manager ${{ github.ref_name }}'
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: '⚡ Process Manager ${{ github.event.inputs.tag || github.ref_name }}'
           releaseBody: |
             ## What's Changed
 
