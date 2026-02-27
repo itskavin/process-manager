@@ -157,15 +157,25 @@ Vite runs on `localhost:1420`, Rust debugs on port 9222 in VS Code.
 
 ```bash
 bun run build          # Compile frontend
-cargo build --release # Compile Rust
-bun run tauri build   # Bundle as MSI + NSIS installer
+bun run tauri build   # Bundle as MSI + NSIS installer (x64 default)
 ```
 
-Output: `src-tauri/target/x86_64-pc-windows-gnu/release/bundle/`
+For specific architectures:
+```bash
+bun run tauri build -- --target i686-pc-windows-msvc      # x86 (32-bit)
+bun run tauri build -- --target aarch64-pc-windows-msvc   # ARM64
+bun run tauri build -- --target x86_64-pc-windows-msvc    # x64 (default)
+```
 
-### Windows Cross-Compile on Linux (CI)
+Output: `src-tauri/target/{target}/release/bundle/`
 
-**Recent fix**: Moved `tray-icon` feature to Windows-target-specific dependency in [src-tauri/Cargo.toml](src-tauri/Cargo.toml) to avoid appindicator library detection on Linux.
+### CI/CD on Windows-latest
+
+The GitHub Actions workflow ([.github/workflows/release.yml](.github/workflows/release.yml)) now builds on **windows-latest** with parallel multi-architecture support:
+- Builds x64, x86, and ARM64 in parallel matrix jobs
+- Each target uses `windows-msvc` (has MSVC linker pre-installed)
+- Artifacts aggregated and published as GitHub release
+- No cross-compilation complexity—native Windows compilation is faster and more reliable
 
 ## Key Conventions
 
