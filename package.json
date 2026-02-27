@@ -8,7 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "icons": "node generate-icons.mjs && npx png-to-ico src-tauri/icons/256x256.png -o src-tauri/icons/icon.ico && npx png2icons src-tauri/icons/1024x1024.png src-tauri/icons/icon -icns"
+    "icons": "node generate-icons.mjs && node create-ico.mjs && npx png2icons src-tauri/icons/1024x1024.png src-tauri/icons/icon -icns"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
